@@ -1,4 +1,4 @@
-package com.desafio.todoapi.dto;
+package com.taskmanagent.dto;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import io.swagger.v3.oas.annotations.media.Schema;

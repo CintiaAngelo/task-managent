@@ -57,9 +57,7 @@ class TaskServiceTest {
                 .build();
     }
 
-    // =========================================================
-    //  CRIAR TAREFA
-    // =========================================================
+
     @Nested
     @DisplayName("Criar Tarefa")
     class CriarTarefa {
@@ -160,11 +158,46 @@ class TaskServiceTest {
             assertThat(response).isNotNull();
             assertThat(response.getDueDate()).isNull();
         }
+
+        @Test
+        @DisplayName("deve criar tarefa com status PENDING independente do que for enviado")
+        void deveCriarTarefaComStatusPendingPorPadrao() {
+            CreateTaskRequest request = CreateTaskRequest.builder()
+                    .title("Tarefa nova")
+                    .build();
+
+            when(taskRepository.salvar(any(Task.class))).thenReturn(tarefaPadrao);
+
+            TaskResponse response = taskService.criarTarefa(request);
+
+            assertThat(response.getStatus()).isEqualTo(TaskStatus.PENDING.getValue());
+        }
+
+        @Test
+        @DisplayName("deve criar tarefa com prioridade LOW quando informada")
+        void deveCriarTarefaComPrioridadeLow() {
+            CreateTaskRequest request = CreateTaskRequest.builder()
+                    .title("Tarefa com baixa prioridade")
+                    .priority(TaskPriority.LOW)
+                    .build();
+
+            Task tarefaLow = Task.builder()
+                    .id(UUID.randomUUID().toString())
+                    .title("Tarefa com baixa prioridade")
+                    .status(TaskStatus.PENDING.getValue())
+                    .priority(TaskPriority.LOW.getValue())
+                    .createdAt(LocalDateTime.now().toString())
+                    .updatedAt(LocalDateTime.now().toString())
+                    .build();
+
+            when(taskRepository.salvar(any(Task.class))).thenReturn(tarefaLow);
+
+            TaskResponse response = taskService.criarTarefa(request);
+
+            assertThat(response.getPriority()).isEqualTo(TaskPriority.LOW.getValue());
+        }
     }
 
-    // =========================================================
-    //  LISTAR TAREFAS
-    // =========================================================
     @Nested
     @DisplayName("Listar Tarefas")
     class ListarTarefas {
@@ -232,11 +265,31 @@ class TaskServiceTest {
 
             assertThat(tarefas).isEmpty();
         }
+
+        @Test
+        @DisplayName("deve priorizar filtro por status quando status e prioridade são informados juntos")
+        void devePriorizarFiltroStatusQuandoAmbosInformados() {
+            when(taskRepository.listarPorStatus("pending")).thenReturn(List.of(tarefaPadrao));
+
+            List<TaskResponse> tarefas = taskService.listarTarefas("pending", "high");
+
+            assertThat(tarefas).hasSize(1);
+            verify(taskRepository, times(1)).listarPorStatus("pending");
+            verify(taskRepository, never()).listarPorPrioridade(any());
+        }
+
+        @Test
+        @DisplayName("deve ignorar filtro em branco e retornar todas as tarefas")
+        void deveIgnorarFiltroEmBrancoERetornarTodas() {
+            when(taskRepository.listarTodas()).thenReturn(List.of(tarefaPadrao));
+
+            List<TaskResponse> tarefas = taskService.listarTarefas("  ", "  ");
+
+            assertThat(tarefas).hasSize(1);
+            verify(taskRepository, times(1)).listarTodas();
+        }
     }
 
-    // =========================================================
-    //  BUSCAR TAREFA POR ID
-    // =========================================================
     @Nested
     @DisplayName("Buscar Tarefa por ID")
     class BuscarTarefaPorId {
@@ -263,11 +316,26 @@ class TaskServiceTest {
                     .isInstanceOf(TaskNotFoundException.class)
                     .hasMessageContaining(idInexistente);
         }
+
+        @Test
+        @DisplayName("deve retornar todos os campos corretamente mapeados")
+        void deveRetornarTodosOsCamposCorretamenteMapeados() {
+            when(taskRepository.buscarPorId(idTarefaPadrao)).thenReturn(Optional.of(tarefaPadrao));
+
+            TaskResponse response = taskService.buscarTarefaPorId(idTarefaPadrao);
+
+            assertThat(response.getId()).isEqualTo(tarefaPadrao.getId());
+            assertThat(response.getTitle()).isEqualTo(tarefaPadrao.getTitle());
+            assertThat(response.getDescription()).isEqualTo(tarefaPadrao.getDescription());
+            assertThat(response.getStatus()).isEqualTo(tarefaPadrao.getStatus());
+            assertThat(response.getPriority()).isEqualTo(tarefaPadrao.getPriority());
+            assertThat(response.getDueDate()).isEqualTo(tarefaPadrao.getDueDate());
+            assertThat(response.getCreatedAt()).isEqualTo(tarefaPadrao.getCreatedAt());
+            assertThat(response.getUpdatedAt()).isEqualTo(tarefaPadrao.getUpdatedAt());
+        }
     }
 
-    // =========================================================
-    //  ATUALIZAR TAREFA
-    // =========================================================
+
     @Nested
     @DisplayName("Atualizar Tarefa")
     class AtualizarTarefa {
@@ -393,11 +461,79 @@ class TaskServiceTest {
             assertThat(response.getDescription()).isEqualTo(tarefaPadrao.getDescription());
             assertThat(response.getStatus()).isEqualTo(tarefaPadrao.getStatus());
         }
+
+        @Test
+        @DisplayName("deve permitir editar tarefa com status cancelled")
+        void devePermitirEditarTarefaComStatusCancelled() {
+            tarefaPadrao.setStatus(TaskStatus.CANCELLED.getValue());
+
+            UpdateTaskRequest request = UpdateTaskRequest.builder()
+                    .title("Título editado")
+                    .build();
+
+            Task tarefaAtualizada = Task.builder()
+                    .id(idTarefaPadrao)
+                    .title("Título editado")
+                    .status(TaskStatus.CANCELLED.getValue())
+                    .priority(tarefaPadrao.getPriority())
+                    .createdAt(tarefaPadrao.getCreatedAt())
+                    .updatedAt(LocalDateTime.now().toString())
+                    .build();
+
+            when(taskRepository.buscarPorId(idTarefaPadrao)).thenReturn(Optional.of(tarefaPadrao));
+            when(taskRepository.salvar(any(Task.class))).thenReturn(tarefaAtualizada);
+
+            TaskResponse response = taskService.atualizarTarefa(idTarefaPadrao, request);
+
+            assertThat(response.getTitle()).isEqualTo("Título editado");
+            verify(taskRepository, times(1)).salvar(any(Task.class));
+        }
+
+        @Test
+        @DisplayName("deve atualizar apenas a prioridade mantendo os demais campos")
+        void deveAtualizarApenasPrioridadeMantentoOsDemaisCampos() {
+            UpdateTaskRequest request = UpdateTaskRequest.builder()
+                    .priority(TaskPriority.LOW)
+                    .build();
+
+            Task tarefaAtualizada = Task.builder()
+                    .id(idTarefaPadrao)
+                    .title(tarefaPadrao.getTitle())
+                    .description(tarefaPadrao.getDescription())
+                    .status(tarefaPadrao.getStatus())
+                    .priority(TaskPriority.LOW.getValue())
+                    .dueDate(tarefaPadrao.getDueDate())
+                    .createdAt(tarefaPadrao.getCreatedAt())
+                    .updatedAt(LocalDateTime.now().toString())
+                    .build();
+
+            when(taskRepository.buscarPorId(idTarefaPadrao)).thenReturn(Optional.of(tarefaPadrao));
+            when(taskRepository.salvar(any(Task.class))).thenReturn(tarefaAtualizada);
+
+            TaskResponse response = taskService.atualizarTarefa(idTarefaPadrao, request);
+
+            assertThat(response.getPriority()).isEqualTo(TaskPriority.LOW.getValue());
+            assertThat(response.getTitle()).isEqualTo(tarefaPadrao.getTitle());
+            assertThat(response.getStatus()).isEqualTo(tarefaPadrao.getStatus());
+        }
+
+        @Test
+        @DisplayName("deve lançar exceção ao atualizar tarefa com formato de data inválido")
+        void deveLancarExcecaoAoAtualizarComFormatoDataInvalido() {
+            UpdateTaskRequest request = UpdateTaskRequest.builder()
+                    .dueDate("31/12/2099")
+                    .build();
+
+            when(taskRepository.buscarPorId(idTarefaPadrao)).thenReturn(Optional.of(tarefaPadrao));
+
+            assertThatThrownBy(() -> taskService.atualizarTarefa(idTarefaPadrao, request))
+                    .isInstanceOf(BusinessValidationException.class)
+                    .hasMessageContaining("Formato de data inválido");
+
+            verify(taskRepository, never()).salvar(any());
+        }
     }
 
-    // =========================================================
-    //  DELETAR TAREFA
-    // =========================================================
     @Nested
     @DisplayName("Deletar Tarefa")
     class DeletarTarefa {
@@ -431,6 +567,19 @@ class TaskServiceTest {
         @DisplayName("deve permitir deletar tarefa com status completed")
         void devePermitirDeletarTarefaComStatusCompleted() {
             tarefaPadrao.setStatus(TaskStatus.COMPLETED.getValue());
+            when(taskRepository.buscarPorId(idTarefaPadrao)).thenReturn(Optional.of(tarefaPadrao));
+            doNothing().when(taskRepository).deletar(idTarefaPadrao);
+
+            assertThatCode(() -> taskService.deletarTarefa(idTarefaPadrao))
+                    .doesNotThrowAnyException();
+
+            verify(taskRepository, times(1)).deletar(idTarefaPadrao);
+        }
+
+        @Test
+        @DisplayName("deve permitir deletar tarefa com status cancelled")
+        void devePermitirDeletarTarefaComStatusCancelled() {
+            tarefaPadrao.setStatus(TaskStatus.CANCELLED.getValue());
             when(taskRepository.buscarPorId(idTarefaPadrao)).thenReturn(Optional.of(tarefaPadrao));
             doNothing().when(taskRepository).deletar(idTarefaPadrao);
 

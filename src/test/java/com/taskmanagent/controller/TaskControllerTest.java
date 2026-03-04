@@ -1,12 +1,12 @@
 package com.taskmanagent.controller;
 
-
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.taskmanagent.dto.CreateTaskRequest;
 import com.taskmanagent.dto.TaskResponse;
 import com.taskmanagent.dto.UpdateTaskRequest;
 import com.taskmanagent.enums.TaskPriority;
 import com.taskmanagent.enums.TaskStatus;
+import com.taskmanagent.exception.BusinessValidationException;
 import com.taskmanagent.exception.GlobalExceptionHandler;
 import com.taskmanagent.exception.TaskNotEditableException;
 import com.taskmanagent.exception.TaskNotFoundException;
@@ -67,9 +67,7 @@ class TaskControllerTest {
                 .build();
     }
 
-    // =========================================================
-    //  POST /tasks
-    // =========================================================
+
     @Nested
     @DisplayName("POST /tasks - Criar Tarefa")
     class CriarTarefa {
@@ -130,11 +128,50 @@ class TaskControllerTest {
                             .content("{}"))
                     .andExpect(status().isBadRequest());
         }
+
+        @Test
+        @DisplayName("deve retornar 400 quando prioridade inválida é enviada no JSON")
+        void deveRetornar400QuandoPrioridadeInvalidaEnviadaNoJson() throws Exception {
+            mockMvc.perform(post("/tasks")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"title\": \"Tarefa\", \"priority\": \"urgente\"}"))
+                    .andExpect(status().isBadRequest());
+        }
+
+        @Test
+        @DisplayName("deve retornar 400 quando data de vencimento está no passado")
+        void deveRetornar400QuandoDataVencimentoNoPassado() throws Exception {
+            when(taskService.criarTarefa(any())).thenThrow(
+                    new BusinessValidationException("Data de vencimento não pode ser no passado"));
+
+            CreateTaskRequest request = CreateTaskRequest.builder()
+                    .title("Tarefa")
+                    .dueDate("2020-01-01")
+                    .build();
+
+            mockMvc.perform(post("/tasks")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request)))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.status").value(400))
+                    .andExpect(jsonPath("$.message").value(
+                            org.hamcrest.Matchers.containsString("Data de vencimento não pode ser no passado")));
+        }
+
+        @Test
+        @DisplayName("deve retornar 400 quando título tem mais de 100 caracteres")
+        void deveRetornar400QuandoTituloTemMaisDe100Caracteres() throws Exception {
+            CreateTaskRequest request = CreateTaskRequest.builder()
+                    .title("A".repeat(101))
+                    .build();
+
+            mockMvc.perform(post("/tasks")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request)))
+                    .andExpect(status().isBadRequest());
+        }
     }
 
-    // =========================================================
-    //  GET /tasks
-    // =========================================================
     @Nested
     @DisplayName("GET /tasks - Listar Tarefas")
     class ListarTarefas {
@@ -180,11 +217,42 @@ class TaskControllerTest {
                     .andExpect(jsonPath("$").isArray())
                     .andExpect(jsonPath("$").isEmpty());
         }
+
+        @Test
+        @DisplayName("deve retornar 400 quando status informado é inválido")
+        void deveRetornar400QuandoStatusInvalidoInformado() throws Exception {
+            when(taskService.listarTarefas("invalido", null))
+                    .thenThrow(new BusinessValidationException("Status inválido: 'invalido'"));
+
+            mockMvc.perform(get("/tasks").param("status", "invalido"))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.status").value(400));
+        }
+
+        @Test
+        @DisplayName("deve retornar 400 quando prioridade informada é inválida")
+        void deveRetornar400QuandoPrioridadeInvalidaInformada() throws Exception {
+            when(taskService.listarTarefas(null, "urgente"))
+                    .thenThrow(new BusinessValidationException("Prioridade inválida: 'urgente'"));
+
+            mockMvc.perform(get("/tasks").param("priority", "urgente"))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.status").value(400));
+        }
+
+        @Test
+        @DisplayName("deve retornar 200 quando status e prioridade são informados juntos")
+        void deveRetornar200QuandoStatusEPrioridadeInformadosJuntos() throws Exception {
+            when(taskService.listarTarefas("pending", "high")).thenReturn(List.of(tarefaResponsePadrao));
+
+            mockMvc.perform(get("/tasks")
+                            .param("status", "pending")
+                            .param("priority", "high"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$[0].status").value("pending"));
+        }
     }
 
-    // =========================================================
-    //  GET /tasks/{id}
-    // =========================================================
     @Nested
     @DisplayName("GET /tasks/{id} - Buscar Tarefa por ID")
     class BuscarTarefaPorId {
@@ -210,13 +278,11 @@ class TaskControllerTest {
             mockMvc.perform(get("/tasks/{id}", idInexistente))
                     .andExpect(status().isNotFound())
                     .andExpect(jsonPath("$.status").value(404))
-                    .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString(idInexistente)));
+                    .andExpect(jsonPath("$.message").value(
+                            org.hamcrest.Matchers.containsString(idInexistente)));
         }
     }
 
-    // =========================================================
-    //  PUT /tasks/{id}
-    // =========================================================
     @Nested
     @DisplayName("PUT /tasks/{id} - Atualizar Tarefa")
     class AtualizarTarefa {
@@ -287,11 +353,66 @@ class TaskControllerTest {
                             .content(objectMapper.writeValueAsString(request)))
                     .andExpect(status().isBadRequest());
         }
+
+        @Test
+        @DisplayName("deve retornar 400 quando status inválido é enviado no JSON")
+        void deveRetornar400QuandoStatusInvalidoEnviadoNoJson() throws Exception {
+            mockMvc.perform(put("/tasks/{id}", idTarefaPadrao)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"status\": \"inexistente\"}"))
+                    .andExpect(status().isBadRequest());
+        }
+
+        @Test
+        @DisplayName("deve retornar 400 quando prioridade inválida é enviada no JSON")
+        void deveRetornar400QuandoPrioridadeInvalidaEnviadaNoJson() throws Exception {
+            mockMvc.perform(put("/tasks/{id}", idTarefaPadrao)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"title\": \"Título\", \"priority\": \"urgente\"}"))
+                    .andExpect(status().isBadRequest());
+        }
+
+        @Test
+        @DisplayName("deve retornar 200 ao editar tarefa com status cancelled")
+        void deveRetornar200AoEditarTarefaComStatusCancelled() throws Exception {
+            UpdateTaskRequest request = UpdateTaskRequest.builder().title("Título editado").build();
+
+            TaskResponse responseAtualizado = TaskResponse.builder()
+                    .id(idTarefaPadrao)
+                    .title("Título editado")
+                    .status(TaskStatus.CANCELLED.getValue())
+                    .priority(TaskPriority.HIGH.getValue())
+                    .build();
+
+            when(taskService.atualizarTarefa(eq(idTarefaPadrao), any()))
+                    .thenReturn(responseAtualizado);
+
+            mockMvc.perform(put("/tasks/{id}", idTarefaPadrao)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request)))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.status").value("cancelled"));
+        }
+
+        @Test
+        @DisplayName("deve retornar 400 quando data de vencimento está no passado")
+        void deveRetornar400QuandoDataVencimentoNoPassado() throws Exception {
+            when(taskService.atualizarTarefa(eq(idTarefaPadrao), any()))
+                    .thenThrow(new BusinessValidationException("Data de vencimento não pode ser no passado"));
+
+            UpdateTaskRequest request = UpdateTaskRequest.builder()
+                    .dueDate("2019-06-15")
+                    .build();
+
+            mockMvc.perform(put("/tasks/{id}", idTarefaPadrao)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request)))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.status").value(400));
+        }
     }
 
-    // =========================================================
-    //  DELETE /tasks/{id}
-    // =========================================================
+
     @Nested
     @DisplayName("DELETE /tasks/{id} - Deletar Tarefa")
     class DeletarTarefa {
@@ -319,4 +440,3 @@ class TaskControllerTest {
         }
     }
 }
-
