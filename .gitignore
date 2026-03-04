@@ -31,7 +31,6 @@ Thumbs.db
 logs/
 
 ### Application properties locais ###
-src/main/resources/application-local.yml
 src/main/resources/application-dev.yml
 
 ### Build ###
