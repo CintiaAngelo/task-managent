@@ -8,5 +8,5 @@ aws:
 
 logging:
   level:
-    com.desafio.todoapi: INFO
+    com.taskmanagent: INFO
     software.amazon.awssdk: WARN
