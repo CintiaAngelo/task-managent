@@ -1,9 +1,6 @@
 package com.taskmanagent.controller;
 
-import com.taskmanagent.dto.CreateTaskRequest;
-import com.taskmanagent.dto.ErrorResponse;
-import com.taskmanagent.dto.TaskResponse;
-import com.taskmanagent.dto.UpdateTaskRequest;
+import com.taskmanagent.dto.*;
 import com.taskmanagent.service.TaskService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -59,6 +56,18 @@ public class TaskController {
         log.info("GET /tasks - status={}, priority={}", status, priority);
         List<TaskResponse> tarefas = taskService.listarTarefas(status, priority);
         return ResponseEntity.ok(tarefas);
+    }
+
+    @GetMapping("/summary")
+    @Operation(summary = "Resumo por status", description = "Retorna a quantidade de tarefas por status")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Resumo retornado com sucesso",
+                    content = @Content(schema = @Schema(implementation = TaskSummaryResponse.class)))
+    })
+    public ResponseEntity<TaskSummaryResponse> resumirPorStatus() {
+        log.info("GET /tasks/summary - Buscando resumo por status");
+        TaskSummaryResponse response = taskService.resumirPorStatus();
+        return ResponseEntity.ok(response);
     }
 
     @GetMapping("/{id}")

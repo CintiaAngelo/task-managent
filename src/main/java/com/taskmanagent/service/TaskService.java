@@ -3,6 +3,7 @@ package com.taskmanagent.service;
 
 import com.taskmanagent.dto.CreateTaskRequest;
 import com.taskmanagent.dto.TaskResponse;
+import com.taskmanagent.dto.TaskSummaryResponse;
 import com.taskmanagent.dto.UpdateTaskRequest;
 import com.taskmanagent.entity.Task;
 import com.taskmanagent.enums.TaskPriority;
@@ -17,7 +18,9 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeParseException;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -79,6 +82,22 @@ public class TaskService {
         Task task = taskRepository.buscarPorId(id)
                 .orElseThrow(() -> new TaskNotFoundException(id));
         return mapearParaResponse(task);
+    }
+    public TaskSummaryResponse resumirPorStatus() {
+        List<Task> tarefas = taskRepository.listarTodas();
+
+        return TaskSummaryResponse.builder()
+                .pending(contarPorStatus(tarefas, TaskStatus.PENDING))
+                .in_progress(contarPorStatus(tarefas, TaskStatus.IN_PROGRESS))
+                .completed(contarPorStatus(tarefas, TaskStatus.COMPLETED))
+                .cancelled(contarPorStatus(tarefas, TaskStatus.CANCELLED))
+                .build();
+    }
+
+    private long contarPorStatus(List<Task> tarefas, TaskStatus status) {
+        return tarefas.stream()
+                .filter(t -> status.getValue().equalsIgnoreCase(t.getStatus()))
+                .count();
     }
 
     public TaskResponse atualizarTarefa(String id, UpdateTaskRequest request) {
